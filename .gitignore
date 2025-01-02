@@ -2,3 +2,11 @@ trash
 archives
 .DS_Store
 transformers
+src/transfer_learning/__pycache__
+test-soat/paper_attention/.data
+test-soat/paper_attention/results
+test-soat/paper_attention/temp
+src/basic_attention/blocks/__pycache__
+src/basic_attention/embedding/__pycache__
+src/basic_attention/layers/__pycache__
+src/basic_attention/model/__pycache__

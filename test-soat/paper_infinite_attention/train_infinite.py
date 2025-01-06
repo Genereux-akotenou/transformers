@@ -1,11 +1,13 @@
 # Path Configuration
 import sys, os, warnings
+os.environ["WANDB_DISABLED"] = "true"
 DEV_FOLDER = "/Users/genereux/Documents/UM6P/COURS-S3/S3-PROJECT/transformers/src/"
 sys.path.append(os.path.dirname(DEV_FOLDER))
 warnings.filterwarnings("ignore")
 
 # custom model
-from basic_attention.model import EncoderDecoderTransformer
+from infini_attention.model import InfiniteEncoderDecoderTransformer
+from transformers import Seq2SeqTrainer, Seq2SeqTrainingArguments
 from transfer_learning.trainer import Trainer
 
 # data utils
@@ -35,19 +37,11 @@ test_filepaths  = [extract_archive(download_from_url(url_base + url))[0] for url
 fr_tokenizer = get_tokenizer('spacy', language='en')
 en_tokenizer = get_tokenizer('spacy', language='de')
 
-# def build_vocab(filepath, tokenizer):
-#   counter = Counter()
-#   with io.open(filepath, encoding="utf8") as f:
-#     for string_ in f:
-#       counter.update(tokenizer(string_))
-#   return Vocab(counter, specials=['<unk>', '<pad>', '<bos>', '<eos>'])
-
 def build_vocab(filepath, tokenizer):
     counter = Counter()
     with io.open(filepath, encoding="utf8") as f:
         for string_ in f:
             counter.update(tokenizer(string_))
-    
     vocab = build_vocab_from_iterator([counter.keys()], specials=['<unk>', '<pad>', '<bos>', '<eos>'])
     vocab.set_default_index(vocab['<unk>'])
     return vocab
@@ -100,7 +94,7 @@ def generate_batch(data_batch):
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # optimizer parameter setting
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("mps:0" if torch.cuda.is_available() else "cpu")
 init_lr = 1e-5
 factor = 0.9
 adam_eps = 5e-9
@@ -119,19 +113,21 @@ enc_voc_size = len(fr_vocab)
 dec_voc_size = len(en_vocab)
 
 # Encoder decoder
-model = EncoderDecoderTransformer(
+model = InfiniteEncoderDecoderTransformer(
     src_pad_idx=src_pad_idx,
     trg_pad_idx=trg_pad_idx,
     trg_sos_idx=trg_sos_idx,
     d_model=512,
     enc_voc_size=enc_voc_size,
     dec_voc_size=dec_voc_size,
-    max_len=256,
+    max_len=512,
     ffn_hidden=2048,
     n_head=8,
     n_layers=6,
     drop_prob=0.1,
-    device=device
+    device=device,
+    batch_size=128,
+    segment_size=512,
 ).to(device)
 
 # init model weights
@@ -145,6 +141,8 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f'The model has {count_parameters(model):,} trainable parameters')
 
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 class CustomTrainingArguments(TrainingArguments):
@@ -218,3 +216,61 @@ trainer = Trainer(
     collate_fn=generate_batch
 )
 trainer.train()
+
+
+# def compute_metrics(pred):
+#     from sklearn.metrics import accuracy_score
+#     import evaluate
+#     bleu_metric = evaluate.load("bleu")
+
+#     predictions = pred.predictions.argmax(-1)
+#     labels = pred.label_ids
+
+#     # Ensure preds and labels are lists of sequences
+#     predictions = predictions.tolist()
+#     labels = labels.tolist()
+
+#     # Prepare predictions and references for BLEU
+#     predictions_texts = [" ".join(map(str, pred)) for pred in predictions]
+#     references_texts = [[" ".join(map(str, label))] for label in labels]
+
+#     # Compute BLEU score
+#     bleu_result = bleu_metric.compute(predictions=predictions_texts, references=references_texts)
+
+#     return {
+#         "bleu_score": bleu_result["bleu"]
+#     }
+
+# # Define Seq2SeqTrainingArguments
+# training_args = Seq2SeqTrainingArguments(
+#     output_dir="./results-s2s",
+#     run_name="TRANSFORMERS-SCRATCH",
+#     num_train_epochs=5,
+#     per_device_train_batch_size=512,
+#     per_device_eval_batch_size=512,
+#     learning_rate=5e-5,
+#     weight_decay=0.01,
+#     save_steps=10,
+#     evaluation_strategy="steps",
+#     eval_steps=10,
+#     logging_steps=10,
+#     save_total_limit=2,
+#     predict_with_generate=True,
+#     fp16=torch.cuda.is_available(),
+#     do_train=True,
+#     do_eval=True,
+#     remove_unused_columns=False,
+# )
+
+# # Instantiate Seq2SeqTrainer
+# trainer = Seq2SeqTrainer(
+#     model=model,
+#     args=training_args,
+#     train_dataset=train_data,
+#     eval_dataset=val_data,
+#     data_collator=generate_batch,
+#     compute_metrics=compute_metrics,
+# )
+
+# # Start training
+# trainer.train()

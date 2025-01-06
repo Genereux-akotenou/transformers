@@ -7,6 +7,7 @@ from rich.console import Console
 from rich.table import Table
 from IPython.display import clear_output
 import time
+import math
 
 class Trainer:
     """
@@ -84,6 +85,7 @@ class Trainer:
             batch_size=self.training_args.per_device_train_batch_size,
             shuffle=True,
             collate_fn=self.collate_fn,
+            drop_last=True
         )
 
         global_step = 0
@@ -124,7 +126,7 @@ class Trainer:
             # Evaluate after each epoch
             if not self.training_args.eval_steps:
                 train_loss = epoch_loss / len(train_loader)
-                self.save_model(step=f"epoch-{global_step}")
+                self.save_model()
                 self.evaluate(train_loss=train_loss, epoch=int(epoch+1))
 
     def evaluate(self, train_loss=None, epoch=None):
@@ -139,6 +141,7 @@ class Trainer:
             self.eval_dataset,
             batch_size=self.training_args.per_device_eval_batch_size,
             collate_fn=self.collate_fn,
+            drop_last=True
         )
 
         total_loss = 0
@@ -146,7 +149,7 @@ class Trainer:
         all_labels = []
 
         with torch.no_grad():
-            for batch in eval_loader:
+            for batch in tqdm(eval_loader, desc=f"Evaluation", ncols=10):
                 src_ids = batch["input_ids"].to(self.device)
                 tgt_ids = batch["labels"].to(self.device)
 
@@ -169,6 +172,8 @@ class Trainer:
         metrics["epoch"]  = epoch
         metrics["train_loss"] = train_loss
         metrics["eval_loss"]  = eval_loss
+        metrics["PPL"]        = math.exp(train_loss)
+        
         
         # Compute additional metrics if provided
         if self.compute_metrics:
